@@ -1,0 +1,12 @@
+trainFile = /home/rianne/Documents/CSC585/assignment3/I/train/125133.tsv
+serializeTo = /home/rianne/Documents/CSC585/assignment3/crf-model.ser.gz
+map = word=0,tag=1,answer=2
+
+useClassFeature=true
+useWord=true
+useNGrams=true
+maxNgramLeng=6
+usePrev=true
+useNext=true
+useTags=true
+useWordTag=true

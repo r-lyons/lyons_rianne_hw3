@@ -1,0 +1,10 @@
+[0m[[0m[33mwarn[0m] [0m[0m/home/rianne/Documents/CSC585/assignment3/lyons_rianne_hw3/src/main/scala/RunBaselines.scala:91:16: patterns after a variable pattern cannot match (SLS 8.1.1)[0m
+[0m[[0m[33mwarn[0m] [0m[0m          case goldLabel => {[0m
+[0m[[0m[33mwarn[0m] [0m[0m               ^[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/rianne/Documents/CSC585/assignment3/lyons_rianne_hw3/src/main/scala/RunBaselines.scala:95:20: unreachable code due to variable pattern 'goldLabel' on line 91[0m
+[0m[[0m[33mwarn[0m] [0m[0m          case "/" =>[0m
+[0m[[0m[33mwarn[0m] [0m[0m                   ^[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/rianne/Documents/CSC585/assignment3/lyons_rianne_hw3/src/main/scala/RunBaselines.scala:96:32: unreachable code due to variable pattern 'goldLabel' on line 91[0m
+[0m[[0m[33mwarn[0m] [0m[0m          case _ => totalPreds += 1[0m
+[0m[[0m[33mwarn[0m] [0m[0m                               ^[0m
+[0m[[0m[33mwarn[0m] [0m[0mthree warnings found[0m
