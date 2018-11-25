@@ -165,17 +165,22 @@ def train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data):
           teacher_outputs.append([t[0] for t in teacher_output_gold]) #list of only outputs for all docs (teacher preds)
           student_outputs.append([s[0] for s in student_output_gold]) #list of all docs (student preds)
           teacher_models.append(teacher_outputs) #list of all models (lists of doc preds)
+          
+      #update student model
       student_loss = build_model(first_level, student_lstm, instance, gold, W, B)
       student_loss.backward()
       trainer.update()
+      
       #average all the teacher model predictions
       teacher_avgs = [np.sum(np.array([m[r] for m in teacher_models]), axis = 0)//len(teacher_models[0]) for r in range(len(teacher_models[0]))]
       
+      #calculate consistency cost between teacher and student models
       for dt, ds in zip(teacher_avgs, student_outputs):
         consistency += calculate_mse(dt, ds)
       consistency_costs.append(consistency)
-      print(consistency_costs)  
+      #print(consistency_costs)  
       
+      #early stopping condition: consistency cost
       if len(consistency_costs) > 5:
         diff1 = math.fabs(consistency_costs[-1] - consistency_costs[-2])
         diff2 = math.fabs(consistency_costs[-2] - consistency_costs[-3])
@@ -187,8 +192,49 @@ def train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data):
         continue
 
 
-#def compute_metrics()
-
+def compute_metrics(results_dict):
+    """
+    Computes precision, recall, and F1 scores for the P, I, O categories.
+    @params: results_dict is a dictionary with P, I, O as keys and lists of predictions
+               for documents as values.
+    @returns: metrics_dict is a dictionary with P, I, O as keys and [precision,
+                recall, F1] as values.
+    """
+    num_pred_dict = {'I': 0, 'O': 0, 'P': 0}
+    num_correct_dict = {'I': 0, 'O': 0, 'P': 0}
+    total_pred = 0
+    
+    for first_level in results_dict.keys(): #P, I, O
+      num_correct = 0
+      num_pred = 0
+      for doc in results_dict[first_level]:
+        for wd in doc: #(prediction, gold label)
+          num_pred += 1
+          if wd[0] == wd[1]:
+            num_correct += 1
+          else:
+            continue 
+      num_pred_dict[first_level] += num_pred
+      num_correct_dict[first_level] += num_correct
+      total_pred += num_pred
+    
+    i_recall = float(num_correct_dict['I'])/float(num_pred_dict['I'])
+    i_precision = float(num_correct_dict['I'])/float(total_pred)
+    i_f1 = float(2*i_recall*i_precision)/float(i_recall + i_precision)
+    
+    o_recall = float(num_correct_dict['O'])/float(num_pred_dict['O'])
+    o_precision = float(num_correct_dict['O'])/float(total_pred)
+    o_f1 = float(2*o_recall*o_precision)/float(o_recall + o_precision)
+    
+    p_recall = float(num_correct_dict['P'])/float(num_pred_dict['P'])
+    p_precision = float(num_correct_dict['P'])/float(total_pred)
+    p_f1 = float(2*p_recall*p_precision)/float(p_recall + p_precision)
+    
+    metrics_dict = {'I': [i_precision, i_recall, i_f1], 'O': [o_precision, o_recall, o_f1], 'P': [p_precision, p_recall, p_f1]}
+    
+    return metrics_dict
+        
+        
           
 
 def main():
@@ -196,6 +242,7 @@ def main():
     train_paths = ['train/P/88754.tokens','train/I/3277760.tokens','train/O/352099.tokens','train/P/350565.tokens','train/O/1336890.tokens','train/I/8215273.tokens','train/I/43164.tokens','train/P/3137065.tokens']
     dev_paths = ['dev/I/16603337','dev/I/43164','dev/O/43164','dev/O/1300984','dev/P/7218018']
     test_paths = []
+    
     #make vocab (only once)
     #make_vocab_index(train_paths, 'PubMed-w2v.txt')
     
@@ -236,14 +283,18 @@ def main():
     B = pc.add_parameters((8))
     
     train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data)
+    
+    hier_dev_results = {'I':[],'O':[],'P':[]}
       
     for first_level, docs in hier_dev_data.items():
       for instance, gold in docs:
         student_dev_predgold = run_one_doc(student_lstm, first_level, instance, gold, W, B)
         teacher_dev_predgold = run_one_doc(teacher_lstm, first_level, instance, gold, W, B)
+        hier_dev_results[first_level].append(teacher_dev_predgold)
     
-    print(student_dev_predgold)
-    print(teacher_dev_predgold)
+    #print(student_dev_predgold)
+    #print(teacher_dev_predgold)
+    #print(hier_dev_results)
    
     #save model
     dy.save("model",[teacher_lstm, W, B])
@@ -252,8 +303,12 @@ def main():
     teacher_lstm_load, W_load, B_load = dy.load("model", pc)
     
     #test on test data
+    hier_test_data = {'I':[],'O':[],'P':[]}
+    
     
     #compute statistics
+    metrics = compute_metrics(hier_dev_results)
+    print(metrics)
     
       
 
