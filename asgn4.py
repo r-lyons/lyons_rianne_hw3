@@ -3,6 +3,7 @@ import dynet as dy
 import numpy as np
 import pickle as pkl
 import random
+import math
 
 def make_vocab_index(file_list, path_to_embeddings):
     """
@@ -67,7 +68,6 @@ def file_to_embedding(file_path, vocab):
 
     return embed_file
     
-#def run_one_doc(model, emb_doc, doc_labels, w_param, b_param):
 def run_one_doc(model, first_level, emb_doc, doc_labels, w_param, b_param):
     """
     Runs the given model on one document and makes predictions.
@@ -100,30 +100,9 @@ def run_one_doc(model, first_level, emb_doc, doc_labels, w_param, b_param):
       out_class = dy.softmax((w_param*s2.output())+b_param)
       chosen_class = np.argmax(out_class.npvalue())
       pred_gold.append((int(chosen_class), int(label)))
-    """
-    for first_level, docs in data_dict.items():
-      for wdemb, label in docs:
-        x = dy.inputVector(wdemb)
-        if first_level == 'I':
-          s2 = si.add_input(x)
-        elif first_level == 'O':
-          s2 = so.add_input(x)
-        else:
-          s2 = sp.add_input(x)
-        out_class = dy.softmax((w_param*s2.output())+b_param)
-        chosen_class = np.argmax(out_class.npvalue())
-        pred_gold.append((int(chosen_class), int(label)))
-    
-    for wdemb, label in zip(emb_doc, doc_labels):
-      x = dy.inputVector(wdemb)
-      s = s.add_input(x)
-      out_class = dy.softmax((w_param*s.output())+b_param)
-      chosen_class = np.argmax(out_class.npvalue())
-      pred_gold.append((int(chosen_class), int(label)))
-    """
+      
     return pred_gold
 
-#def build_model(emb_doc, doc_labels, model, w_param, b_param):
 def build_model(first_level, model, emb_doc, doc_labels, w_param, b_param):
     """
     Runs the model for training, calculating the loss. 
@@ -147,6 +126,7 @@ def build_model(first_level, model, emb_doc, doc_labels, w_param, b_param):
     
     for wdemb, label in zip(emb_doc, doc_labels):
       x = dy.inputVector(wdemb)
+      dy.noise(x, 0.5) #noise for student model
       if first_level == 'I':
         s2 = si.add_input(x)
       elif first_level == 'O':
@@ -155,25 +135,60 @@ def build_model(first_level, model, emb_doc, doc_labels, w_param, b_param):
         s2 = sp.add_input(x)
       loss.append(dy.pickneglogsoftmax((w_param*s2.output())+b_param,label))
     return dy.esum(loss)  
-    """
-    for first_level, docs in data_dict.items():
-      for wdemb, label in docs:
-        x = dy.inputVector(wdemb)
-        if first_level == 'I':
-          s2 = si.add_input(x)
-        elif first_level == 'O':
-          s2 = so.add_input(x)
-        else:
-          s2 = sp.add_input(x)
-        loss.append(dy.pickneglogsoftmax((w_param*s2.output())+b_param,label))
-    return dy.esum(loss)
     
-    for wdemb, label in zip(emb_doc, doc_labels):
-      x = dy.inputVector(wdemb)
-      s = s.add_input(x)
-      loss.append(dy.pickneglogsoftmax((w_param*s.output())+b_param,label))
-    return dy.esum(loss)
+def calculate_mse(t_preds, s_preds):
     """
+    Calculates the mean squared error for the consistency cost
+    between teacher and student predictions.
+    @params: t_preds is the list of teacher predictions for a document,
+             s_preds is the list of student predictions for a document
+    @returns: the mean squared error between teacher and student predictions
+    """
+    return (1/len(t_preds))* np.sum(np.array([(float(t) - float(s))**2 for t, s in zip(t_preds, s_preds)]))
+    
+
+def train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data):
+    """
+    """
+    consistency_costs = []
+    teacher_models = []
+    
+    for e in range(10): #epochs
+      consistency = 0.0
+      teacher_outputs = []
+      student_outputs = []
+      
+      for first_level, docs in hier_train_data.items():
+        for instance, gold in docs:
+          student_output_gold = run_one_doc(student_lstm, first_level, instance, gold, W, B)
+          teacher_output_gold = run_one_doc(teacher_lstm, first_level, instance, gold, W, B)
+          teacher_outputs.append([t[0] for t in teacher_output_gold]) #list of only outputs for all docs (teacher preds)
+          student_outputs.append([s[0] for s in student_output_gold]) #list of all docs (student preds)
+          teacher_models.append(teacher_outputs) #list of all models (lists of doc preds)
+      student_loss = build_model(first_level, student_lstm, instance, gold, W, B)
+      student_loss.backward()
+      trainer.update()
+      #average all the teacher model predictions
+      teacher_avgs = [np.sum(np.array([m[r] for m in teacher_models]), axis = 0)//len(teacher_models[0]) for r in range(len(teacher_models[0]))]
+      
+      for dt, ds in zip(teacher_avgs, student_outputs):
+        consistency += calculate_mse(dt, ds)
+      consistency_costs.append(consistency)
+      print(consistency_costs)  
+      
+      if len(consistency_costs) > 5:
+        diff1 = math.fabs(consistency_costs[-1] - consistency_costs[-2])
+        diff2 = math.fabs(consistency_costs[-2] - consistency_costs[-3])
+        if math.fabs(diff1 - diff2) < 0.0001:
+          break  
+        else:
+          continue
+      else:
+        continue
+
+
+#def compute_metrics()
+
           
 
 def main():
@@ -212,49 +227,34 @@ def main():
         labels = [float(label) for label in l.readline().split(',')]
         dev_doc_labels.append(labels)
         hier_dev_data[pd[4]].append((dev_doc_embeddings[dev_paths.index(pd)], labels))
-        
-        
-    train_data = zip(train_doc_embeddings,train_doc_labels)
-    #train_data = {emb_doc: label_doc for e,l in zip(train_doc_embeddings,train_doc_labels)}
+      
     pc = dy.ParameterCollection()
     trainer = dy.SimpleSGDTrainer(pc)
-    lstm = dy.LSTMBuilder(1, 200, 80, pc)
+    student_lstm = dy.LSTMBuilder(1, 200, 80, pc)
+    teacher_lstm = dy.LSTMBuilder(1, 200, 80, pc)
     W = pc.add_parameters((8, 80))
     B = pc.add_parameters((8))
     
-    for i in range(5):
-      #train_data = random.shuffle(list(zip(train_doc_embeddings,train_doc_labels))) 
-      #random.shuffle(train_data.keys())
-      #print(train_data)
-      for first_level, docs in hier_train_data.items():
-        for instance, gold in docs:
-          output_gold = run_one_doc(lstm, first_level, instance, gold, W, B)
-      #for instance, gold in train_data:
-        #output_gold = run_one_doc(lstm, hier_train_data, W, B)
-        #output_gold = run_one_doc(lstm, instance, gold, W, B)
-        #print(output_gold)
-        #do calculations
-      loss = build_model(first_level, lstm, instance, gold, W, B)
-      loss.backward()
-      trainer.update()
-      
+    train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data)
       
     for first_level, docs in hier_dev_data.items():
       for instance, gold in docs:
-        dev_predgold = run_one_doc(lstm, first_level, instance, gold, W, B)
-      
-    #for doc,gold in zip(dev_doc_embeddings,dev_doc_labels):
-      #dev_predgold = run_one_doc(lstm,doc,gold,W,B)
-      print(dev_predgold)
-      
-      
+        student_dev_predgold = run_one_doc(student_lstm, first_level, instance, gold, W, B)
+        teacher_dev_predgold = run_one_doc(teacher_lstm, first_level, instance, gold, W, B)
+    
+    print(student_dev_predgold)
+    print(teacher_dev_predgold)
+   
     #save model
-    dy.save("model",[lstm, W, B])
+    dy.save("model",[teacher_lstm, W, B])
     #load model
     pc = dy.ParameterCollection()
-    lstm_load, W_load, B_load = dy.load("model", pc)
+    teacher_lstm_load, W_load, B_load = dy.load("model", pc)
     
     #test on test data
+    
+    #compute statistics
+    
       
 
 
