@@ -282,33 +282,33 @@ def main():
       vocab_idx = pkl.load(v)
       
     #get embeddings to train
-    train_doc_embeddings = [file_to_embedding(path, vocab_idx) for path in train_paths]
+    #train_doc_embeddings = [file_to_embedding(path, vocab_idx) for path in train_paths]
     
     #get dev embeddings
-    dev_doc_embeddings = [file_to_embedding(path+'.tokens', vocab_idx) for path in dev_paths]
+    #dev_doc_embeddings = [file_to_embedding(path+'.tokens', vocab_idx) for path in dev_paths]
     
     #get test embeddings
     test_doc_embeddings = [file_to_embedding(path+'.tokens', vocab_idx) for path in test_paths]
     
-    hier_train_data = {'I':[],'O':[],'P':[]}
-    hier_dev_data = {'I':[],'O':[],'P':[]}
+    #hier_train_data = {'I':[],'O':[],'P':[]}
+    #hier_dev_data = {'I':[],'O':[],'P':[]}
     hier_test_data = {'I':[],'O':[],'P':[]}
     
     #get labels
-    train_doc_labels = []
-    for p in train_paths:
-      doc_id = p.lstrip('train/').rstrip('.tokens')
-      with open('train/'+doc_id+'_AGGREGATED.ann', 'r') as l:
-        labels = [float(label) for label in l.readline().split(',')]
-        train_doc_labels.append(labels)
-        hier_train_data[doc_id[0]].append((train_doc_embeddings[train_paths.index(p)], labels))
+    #train_doc_labels = []
+    #for p in train_paths:
+      #doc_id = p.lstrip('train/').rstrip('.tokens')
+      #with open('train/'+doc_id+'_AGGREGATED.ann', 'r') as l:
+        #labels = [float(label) for label in l.readline().split(',')]
+        #train_doc_labels.append(labels)
+        #hier_train_data[doc_id[0]].append((train_doc_embeddings[train_paths.index(p)], labels))
         
-    dev_doc_labels = []
-    for pd in dev_paths:
-      with open(pd+'_AGGREGATED.ann', 'r') as l:
-        labels = [float(label) for label in l.readline().split(',')]
-        dev_doc_labels.append(labels)
-        hier_dev_data[pd[4]].append((dev_doc_embeddings[dev_paths.index(pd)], labels))
+    #dev_doc_labels = []
+    #for pd in dev_paths:
+      #with open(pd+'_AGGREGATED.ann', 'r') as l:
+        #labels = [float(label) for label in l.readline().split(',')]
+        #dev_doc_labels.append(labels)
+        #hier_dev_data[pd[4]].append((dev_doc_embeddings[dev_paths.index(pd)], labels))
         
     test_doc_labels = []
     for pd in test_paths:
@@ -326,7 +326,7 @@ def main():
     B = pc.add_parameters((8))
     
     #train
-    train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data)
+    #train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data)
     
     #run development
     #hier_dev_results = {'I':[],'O':[],'P':[]}
