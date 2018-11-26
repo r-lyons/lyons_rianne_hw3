@@ -1,4 +1,16 @@
+"""
+Author: Rianne Lyons
+Last modified: 11/25/2018
+Filename: asgn4.py
+CSC 585 assignment 4
 
+Implementation of a hierarchical LSTM with
+a mean teacher learning approach for the PICO dataset.
+Requires DyNet, as well as the PICO dataset. Uses 
+data divided into train/, dev/, and test/ directories in
+the same directory as this file. Saves and loads pickle and 
+DyNet files (for vocabulary and models).
+"""
 import dynet as dy
 import numpy as np
 import pickle as pkl
@@ -149,6 +161,13 @@ def calculate_mse(t_preds, s_preds):
 
 def train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data):
     """
+    Trains the model using the mean teacher approach (temporal ensemble). 
+    @params: student_lstm is the hierarchical student model (with gaussian noise),
+             teacher_lstm is the hierarchical teacher model (with averaged predictions),
+             W is a weight parameter,
+             B is a bias parameter,
+             trainer is the DyNet SGD trainer,
+             hier_train_data is a dictionary with keys as I, O, P and values as lists of documents
     """
     consistency_costs = []
     teacher_models = []
@@ -203,6 +222,7 @@ def compute_metrics(results_dict):
     num_pred_dict = {'I': 0, 'O': 0, 'P': 0}
     num_correct_dict = {'I': 0, 'O': 0, 'P': 0}
     total_pred = 0
+    metrics_dict = {}
     
     for first_level in results_dict.keys(): #P, I, O
       num_correct = 0
@@ -218,19 +238,24 @@ def compute_metrics(results_dict):
       num_correct_dict[first_level] += num_correct
       total_pred += num_pred
     
-    i_recall = float(num_correct_dict['I'])/float(num_pred_dict['I'])
-    i_precision = float(num_correct_dict['I'])/float(total_pred)
-    i_f1 = float(2*i_recall*i_precision)/float(i_recall + i_precision)
+    if num_pred_dict['I'] != 0:
+      i_recall = float(num_correct_dict['I'])/float(num_pred_dict['I'])
+      i_precision = float(num_correct_dict['I'])/float(total_pred)
+      i_f1 = float(2*i_recall*i_precision)/float(i_recall + i_precision)
+      metrics_dict['I'] = [i_precision, i_recall, i_f1]
+      
+    if num_pred_dict['O'] != 0:
+      o_recall = float(num_correct_dict['O'])/float(num_pred_dict['O'])
+      o_precision = float(num_correct_dict['O'])/float(total_pred)
+      o_f1 = float(2*o_recall*o_precision)/float(o_recall + o_precision)
+      metrics_dict['O'] = [o_precision, o_recall, o_f1]
     
-    o_recall = float(num_correct_dict['O'])/float(num_pred_dict['O'])
-    o_precision = float(num_correct_dict['O'])/float(total_pred)
-    o_f1 = float(2*o_recall*o_precision)/float(o_recall + o_precision)
+    if num_pred_dict['P'] != 0:
+      p_recall = float(num_correct_dict['P'])/float(num_pred_dict['P'])
+      p_precision = float(num_correct_dict['P'])/float(total_pred)
+      p_f1 = float(2*p_recall*p_precision)/float(p_recall + p_precision)
+      metrics_dict['P'] = [p_precision, p_recall, p_f1]
     
-    p_recall = float(num_correct_dict['P'])/float(num_pred_dict['P'])
-    p_precision = float(num_correct_dict['P'])/float(total_pred)
-    p_f1 = float(2*p_recall*p_precision)/float(p_recall + p_precision)
-    
-    metrics_dict = {'I': [i_precision, i_recall, i_f1], 'O': [o_precision, o_recall, o_f1], 'P': [p_precision, p_recall, p_f1]}
     
     return metrics_dict
         
@@ -238,10 +263,16 @@ def compute_metrics(results_dict):
           
 
 def main():
+    """
+    Main function to control reading in data, creating vocabulary, mapping words to
+    embeddings, initializing models, training, developing, and testing. Prints metrics for
+    the first and second testing iterations, and requires DyNet teacher and student models
+    to load.
+    """
 
     train_paths = ['train/P/88754.tokens','train/I/3277760.tokens','train/O/352099.tokens','train/P/350565.tokens','train/O/1336890.tokens','train/I/8215273.tokens','train/I/43164.tokens','train/P/3137065.tokens']
     dev_paths = ['dev/I/16603337','dev/I/43164','dev/O/43164','dev/O/1300984','dev/P/7218018']
-    test_paths = []
+    test_paths = ['test/O/2474057','test/I/19931151']
     
     #make vocab (only once)
     #make_vocab_index(train_paths, 'PubMed-w2v.txt')
@@ -256,8 +287,12 @@ def main():
     #get dev embeddings
     dev_doc_embeddings = [file_to_embedding(path+'.tokens', vocab_idx) for path in dev_paths]
     
+    #get test embeddings
+    test_doc_embeddings = [file_to_embedding(path+'.tokens', vocab_idx) for path in test_paths]
+    
     hier_train_data = {'I':[],'O':[],'P':[]}
     hier_dev_data = {'I':[],'O':[],'P':[]}
+    hier_test_data = {'I':[],'O':[],'P':[]}
     
     #get labels
     train_doc_labels = []
@@ -274,7 +309,15 @@ def main():
         labels = [float(label) for label in l.readline().split(',')]
         dev_doc_labels.append(labels)
         hier_dev_data[pd[4]].append((dev_doc_embeddings[dev_paths.index(pd)], labels))
-      
+        
+    test_doc_labels = []
+    for pd in test_paths:
+      with open(pd+'_AGGREGATED.ann', 'r') as l:
+        labels = [float(label) for label in l.readline().split(',')]
+        test_doc_labels.append(labels)
+        hier_test_data[pd[5]].append((test_doc_embeddings[test_paths.index(pd)], labels))
+        
+    #initialize models
     pc = dy.ParameterCollection()
     trainer = dy.SimpleSGDTrainer(pc)
     student_lstm = dy.LSTMBuilder(1, 200, 80, pc)
@@ -282,35 +325,49 @@ def main():
     W = pc.add_parameters((8, 80))
     B = pc.add_parameters((8))
     
+    #train
     train(student_lstm, teacher_lstm, W, B, trainer, hier_train_data)
     
-    hier_dev_results = {'I':[],'O':[],'P':[]}
-      
-    for first_level, docs in hier_dev_data.items():
-      for instance, gold in docs:
-        student_dev_predgold = run_one_doc(student_lstm, first_level, instance, gold, W, B)
-        teacher_dev_predgold = run_one_doc(teacher_lstm, first_level, instance, gold, W, B)
-        hier_dev_results[first_level].append(teacher_dev_predgold)
+    #run development
+    #hier_dev_results = {'I':[],'O':[],'P':[]}
+    #for first_level, docs in hier_dev_data.items():
+      #for instance, gold in docs:
+        #student_dev_predgold = run_one_doc(student_lstm, first_level, instance, gold, W, B)
+        #teacher_dev_predgold = run_one_doc(teacher_lstm, first_level, instance, gold, W, B)
+        #hier_dev_results[first_level].append(teacher_dev_predgold)
     
-    #print(student_dev_predgold)
-    #print(teacher_dev_predgold)
+    #for error analysis   
     #print(hier_dev_results)
+    
    
-    #save model
-    dy.save("model",[teacher_lstm, W, B])
+    #save models
+    #dy.save("teacher_model",[teacher_lstm, W, B])
+    #dy.save("student_model",[student_lstm, W, B])
+    
     #load model
     pc = dy.ParameterCollection()
-    teacher_lstm_load, W_load, B_load = dy.load("model", pc)
+    teacher_lstm_load, W_load, B_load = dy.load("teacher_model", pc)
+    student_lstm_load, W_load, B_load = dy.load("student_model", pc)
     
-    #test on test data
-    hier_test_data = {'I':[],'O':[],'P':[]}
-    
+    #test on test data -- 1st iteration
+    hier_test_results1 = {'I':[],'O':[],'P':[]}
+    for first_level, docs in hier_test_data.items():
+      for instance, gold in docs:
+        teacher_test_predgold = run_one_doc(teacher_lstm_load, first_level, instance, gold, W_load, B_load)
+        hier_test_results1[first_level].append(teacher_test_predgold)
+        
+    #test on test data - 2nd iteration
+    hier_test_results2 = {'I':[],'O':[],'P':[]}
+    for first_level, docs in hier_test_data.items():
+      for instance, gold in docs:
+        student_test_predgold = run_one_doc(student_lstm_load, first_level, instance, gold, W_load, B_load)
+        hier_test_results2[first_level].append(student_test_predgold)
     
     #compute statistics
-    metrics = compute_metrics(hier_dev_results)
-    print(metrics)
+    metrics1 = compute_metrics(hier_test_results1)
+    metrics2 = compute_metrics(hier_test_results2)
+    print("First testing iteration: ", metrics1)
+    print("Second testing iteration: ", metrics2)
     
-      
-
 
 main()
