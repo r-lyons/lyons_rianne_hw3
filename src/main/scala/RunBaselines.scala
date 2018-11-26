@@ -54,15 +54,15 @@ object RunBaselines extends App {
           }
         } 
       }
-      val precisionI = numICorrect / totalPredI
-      val precisionO = numOCorrect / totalPredO
-      val precisionP = numPCorrect / totalPredP
-      val recallI = numICorrect / totalI
-      val recallO = numOCorrect / totalO
-      val recallP = numPCorrect / totalP
-      val fScoreI = 2 * ((precisionI*recallI) / (precisionI+recallI+0.01))
-      val fScoreO = 2 * ((precisionO*recallO) / (precisionO+recallO+0.01))
-      val fScoreP = 2 * ((precisionP*recallP) / (precisionP+recallP+0.01))
+      val precisionI = numICorrect.toDouble / totalPredI.toDouble
+      val precisionO = numOCorrect.toDouble / totalPredO.toDouble
+      val precisionP = numPCorrect.toDouble / totalPredP.toDouble
+      val recallI = numICorrect.toDouble / totalI.toDouble
+      val recallO = numOCorrect.toDouble / totalO.toDouble
+      val recallP = numPCorrect.toDouble / totalP.toDouble
+      val fScoreI = 2 * ((precisionI*recallI) / (precisionI+recallI))
+      val fScoreO = 2 * ((precisionO*recallO) / (precisionO+recallO))
+      val fScoreP = 2 * ((precisionP*recallP) / (precisionP+recallP))
 
       println("I Precision: " + precisionI.toString)
       println("O Precision: " + precisionO.toString)
